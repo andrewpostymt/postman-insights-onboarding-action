@@ -76,6 +76,7 @@ export interface ActionInputs {
   postmanApiKey: string;
   postmanTeamId: string;
   githubToken: string;
+  adoToken: string;
   pollTimeoutSeconds: number;
   pollIntervalSeconds: number;
   postmanStack: PostmanStack;
@@ -162,6 +163,7 @@ export function resolveInputs(
     postmanApiKey,
     postmanTeamId,
     githubToken: get('github-token', env.GITHUB_TOKEN || ''),
+    adoToken: get('ado-token', env.SYSTEM_ACCESSTOKEN || ''),
     pollTimeoutSeconds: clamp(rawTimeout, POLL_TIMEOUT_MIN, POLL_TIMEOUT_MAX, POLL_TIMEOUT_DEFAULT),
     pollIntervalSeconds: clamp(rawInterval, POLL_INTERVAL_MIN, POLL_INTERVAL_MAX, POLL_INTERVAL_DEFAULT),
     postmanStack,
@@ -183,6 +185,25 @@ export function createPlannedOutputs(inputs: ActionInputs): Record<string, strin
     'verification-token': '',
     'status': 'pending',
   };
+}
+
+interface GitProviderInfo {
+  serviceName: string;
+  apiKey: (inputs: ActionInputs) => string | undefined;
+}
+
+function detectGitProvider(repoUrl: string): GitProviderInfo | null {
+  if (!repoUrl) return null;
+  if (/^https?:\/\/(www\.)?github\.com\//i.test(repoUrl)) {
+    return { serviceName: 'github', apiKey: (i) => i.githubToken || undefined };
+  }
+  if (/^https?:\/\/([\w-]+\.)?dev\.azure\.com\//i.test(repoUrl) || /\.visualstudio\.com\//i.test(repoUrl)) {
+    return { serviceName: 'azure-devops', apiKey: (i) => i.adoToken || undefined };
+  }
+  if (/^https?:\/\/(www\.)?gitlab\.com\//i.test(repoUrl) || /gitlab\./i.test(repoUrl)) {
+    return { serviceName: 'gitlab', apiKey: () => undefined };
+  }
+  return null;
 }
 
 export async function runOnboarding(
@@ -213,6 +234,21 @@ export async function runOnboarding(
     await sleepFn(intervalMs);
   }
 
+  // Acknowledge workspace and retrieve verification token regardless of discovery outcome.
+  // This registers the workspace with API Catalog even when the Insights agent is not yet deployed.
+  reporter.info(`Acknowledging workspace onboarding for ${inputs.workspaceId}...`);
+  await client.acknowledgeWorkspace(inputs.workspaceId);
+  reporter.info('Workspace onboarding acknowledged');
+
+  reporter.info('Retrieving team verification token...');
+  const verificationToken = await client.getTeamVerificationToken(inputs.workspaceId);
+  if (verificationToken) {
+    reporter.info('Team verification token retrieved');
+    reporter.setSecret(verificationToken);
+  } else {
+    reporter.warning('Failed to retrieve team verification token');
+  }
+
   if (!match) {
     reporter.warning(`Service "${inputs.projectName}" not found in discovered services after ${inputs.pollTimeoutSeconds}s`);
     return {
@@ -220,7 +256,7 @@ export async function runOnboarding(
       discoveredServiceName: '',
       collectionId: '',
       applicationId: '',
-      verificationToken: null,
+      verificationToken,
       status: 'not-found',
     };
   }
@@ -230,19 +266,20 @@ export async function runOnboarding(
   reporter.info(`Collection prepared: ${collectionId}`);
 
   const repoUrl = inputs.repoUrl;
-  const isGitHub = /^https?:\/\/(www\.)?github\.com\//i.test(repoUrl);
-  if (isGitHub) {
+  const gitProvider = detectGitProvider(repoUrl);
+  if (gitProvider) {
     reporter.info(`Onboarding git integration: ${repoUrl}`);
     await client.onboardGit({
       serviceId: match.id,
       workspaceId: inputs.workspaceId,
       environmentId: inputs.environmentId,
       gitRepositoryUrl: repoUrl,
-      gitApiKey: inputs.githubToken || undefined,
+      gitServiceName: gitProvider.serviceName,
+      gitApiKey: gitProvider.apiKey(inputs),
     });
     reporter.info(`Git onboarding complete for ${match.name}`);
   } else {
-    reporter.info(`Skipping git onboarding for non-GitHub repo: ${repoUrl}`);
+    reporter.info(`Skipping git onboarding for unsupported provider: ${repoUrl}`);
   }
 
   const providerServiceId = await client.resolveProviderServiceId(
@@ -266,19 +303,6 @@ export async function runOnboarding(
     }
   } else {
     reporter.warning('Could not resolve Akita provider service ID; skipping acknowledgment and application binding');
-  }
-
-  reporter.info(`Acknowledging workspace onboarding for ${inputs.workspaceId}...`);
-  await client.acknowledgeWorkspace(inputs.workspaceId);
-  reporter.info('Workspace onboarding acknowledged');
-
-  reporter.info('Retrieving team verification token...');
-  const verificationToken = await client.getTeamVerificationToken(inputs.workspaceId);
-  if (verificationToken) {
-    reporter.info('Team verification token retrieved');
-    reporter.setSecret(verificationToken);
-  } else {
-    reporter.warning('Failed to retrieve team verification token');
   }
 
   return {

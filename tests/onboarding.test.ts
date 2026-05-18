@@ -20,6 +20,7 @@ function makeInputs(overrides: Partial<ActionInputs> = {}): ActionInputs {
     postmanApiKey: 'PMAK-test',
     postmanTeamId: '14103640',
     githubToken: 'ghp_test',
+    adoToken: '',
     pollTimeoutSeconds: 5,
     pollIntervalSeconds: 1,
     postmanStack: 'prod',
@@ -76,6 +77,7 @@ describe('runOnboarding', () => {
       workspaceId: 'ws-123',
       environmentId: 'env-456',
       gitRepositoryUrl: 'https://github.com/postman-cs/af-cards-activation',
+      gitServiceName: 'github',
       gitApiKey: 'ghp_test',
     });
     expect(client.createApplication).toHaveBeenCalledWith('ws-123', '8bfa188b');
@@ -94,6 +96,10 @@ describe('runOnboarding', () => {
     );
     expect(result.status).toBe('not-found');
     expect(client.prepareCollection).not.toHaveBeenCalled();
+    // workspace acknowledgment and verification token still run even without a discovered service
+    expect(client.acknowledgeWorkspace).toHaveBeenCalledWith('ws-123');
+    expect(client.getTeamVerificationToken).toHaveBeenCalledWith('ws-123');
+    expect(result.verificationToken).toBe('tvt_test123');
   });
 
   it('polls until service appears', async () => {
@@ -113,6 +119,47 @@ describe('runOnboarding', () => {
     expect(result.status).toBe('success');
     expect(callCount).toBe(3);
     expect(noopSleep).toHaveBeenCalledTimes(2);
+  });
+
+  it('onboards git with azure-devops service name for ADO repo URLs', async () => {
+    const client = makeClient();
+
+    await runOnboarding(
+      makeInputs({
+        repoUrl: 'https://dev.azure.com/MyOrg/MyProject/_git/my-api-repo',
+        adoToken: 'ado-sys-token',
+        githubToken: '',
+      }),
+      client,
+      vi.fn(),
+    );
+    expect(client.onboardGit).toHaveBeenCalledWith(expect.objectContaining({
+      gitServiceName: 'azure-devops',
+      gitApiKey: 'ado-sys-token',
+      gitRepositoryUrl: 'https://dev.azure.com/MyOrg/MyProject/_git/my-api-repo',
+    }));
+  });
+
+  it('skips git onboarding for unsupported provider URLs', async () => {
+    const client = makeClient();
+
+    await runOnboarding(
+      makeInputs({ repoUrl: 'https://bitbucket.org/some-org/some-repo' }),
+      client,
+      vi.fn(),
+    );
+    expect(client.onboardGit).not.toHaveBeenCalled();
+  });
+
+  it('skips git onboarding when repoUrl is empty', async () => {
+    const client = makeClient();
+
+    await runOnboarding(
+      makeInputs({ repoUrl: '' }),
+      client,
+      vi.fn(),
+    );
+    expect(client.onboardGit).not.toHaveBeenCalled();
   });
 
   it('uses systemEnvironmentId from discovered service when not provided', async () => {

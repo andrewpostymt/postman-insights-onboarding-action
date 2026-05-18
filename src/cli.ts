@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -78,6 +79,7 @@ export function parseCliArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
     'postman-api-key',
     'postman-team-id',
     'github-token',
+    'ado-token',
     'poll-timeout-seconds',
     'poll-interval-seconds',
     'postman-stack'
@@ -149,6 +151,9 @@ export async function runCli(
   if (inputs.githubToken) {
     reporter.setSecret(inputs.githubToken);
   }
+  if (inputs.adoToken) {
+    reporter.setSecret(inputs.adoToken);
+  }
 
   const preliminaryClient = new BifrostCatalogClient({
     accessToken: inputs.postmanAccessToken,
@@ -192,7 +197,16 @@ export async function runCli(
 const currentModulePath = typeof __filename === 'string' ? __filename : '';
 const entrypoint = process.argv[1];
 
-if (entrypoint && currentModulePath === entrypoint) {
+function isEntrypoint(currentPath: string, entrypointPath: string | undefined): boolean {
+  if (!currentPath || !entrypointPath) return false;
+  try {
+    return realpathSync(currentPath) === realpathSync(entrypointPath);
+  } catch {
+    return path.resolve(currentPath) === path.resolve(entrypointPath);
+  }
+}
+
+if (isEntrypoint(currentModulePath, entrypoint)) {
   runCli().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${message}\n`);

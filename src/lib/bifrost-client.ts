@@ -34,6 +34,7 @@ export interface OnboardGitParams {
   workspaceId: string;
   environmentId: string;
   gitRepositoryUrl: string;
+  gitServiceName?: string;
   gitApiKey?: string;
 }
 
@@ -204,7 +205,7 @@ export class BifrostCatalogClient {
       async () => {
         const body: Record<string, unknown> = {
           via_integrations: false,
-          git_service_name: 'github',
+          git_service_name: params.gitServiceName ?? 'github',
           workspace_id: params.workspaceId,
           git_repository_url: params.gitRepositoryUrl,
           service_id: params.serviceId,

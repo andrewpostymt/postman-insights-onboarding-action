@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 "use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -25019,6 +25020,7 @@ __export(cli_exports, {
   toDotenv: () => toDotenv
 });
 module.exports = __toCommonJS(cli_exports);
+var import_node_fs = require("node:fs");
 var import_promises = require("node:fs/promises");
 var import_node_path = __toESM(require("node:path"), 1);
 
@@ -27636,7 +27638,7 @@ var BifrostCatalogClient = class {
       async () => {
         const body = {
           via_integrations: false,
-          git_service_name: "github",
+          git_service_name: params.gitServiceName ?? "github",
           workspace_id: params.workspaceId,
           git_repository_url: params.gitRepositoryUrl,
           service_id: params.serviceId,
@@ -27857,6 +27859,7 @@ function resolveInputs(env = process.env) {
     postmanApiKey,
     postmanTeamId,
     githubToken: get("github-token", env.GITHUB_TOKEN || ""),
+    adoToken: get("ado-token", env.SYSTEM_ACCESSTOKEN || ""),
     pollTimeoutSeconds: clamp(rawTimeout, POLL_TIMEOUT_MIN, POLL_TIMEOUT_MAX, POLL_TIMEOUT_DEFAULT),
     pollIntervalSeconds: clamp(rawInterval, POLL_INTERVAL_MIN, POLL_INTERVAL_MAX, POLL_INTERVAL_DEFAULT),
     postmanStack,
@@ -27876,6 +27879,19 @@ function createPlannedOutputs(inputs) {
     "status": "pending"
   };
 }
+function detectGitProvider(repoUrl) {
+  if (!repoUrl) return null;
+  if (/^https?:\/\/(www\.)?github\.com\//i.test(repoUrl)) {
+    return { serviceName: "github", apiKey: (i) => i.githubToken || void 0 };
+  }
+  if (/^https?:\/\/([\w-]+\.)?dev\.azure\.com\//i.test(repoUrl) || /\.visualstudio\.com\//i.test(repoUrl)) {
+    return { serviceName: "azure-devops", apiKey: (i) => i.adoToken || void 0 };
+  }
+  if (/^https?:\/\/(www\.)?gitlab\.com\//i.test(repoUrl) || /gitlab\./i.test(repoUrl)) {
+    return { serviceName: "gitlab", apiKey: () => void 0 };
+  }
+  return null;
+}
 async function runOnboarding(inputs, client, sleepFn = sleep, reporter = core_exports) {
   const timeoutMs = inputs.pollTimeoutSeconds * 1e3;
   const intervalMs = inputs.pollIntervalSeconds * 1e3;
@@ -27893,6 +27909,17 @@ async function runOnboarding(inputs, client, sleepFn = sleep, reporter = core_ex
     reporter.info(`Service not yet discovered (${elapsedSec}s elapsed, timeout ${inputs.pollTimeoutSeconds}s). Waiting ${inputs.pollIntervalSeconds}s...`);
     await sleepFn(intervalMs);
   }
+  reporter.info(`Acknowledging workspace onboarding for ${inputs.workspaceId}...`);
+  await client.acknowledgeWorkspace(inputs.workspaceId);
+  reporter.info("Workspace onboarding acknowledged");
+  reporter.info("Retrieving team verification token...");
+  const verificationToken = await client.getTeamVerificationToken(inputs.workspaceId);
+  if (verificationToken) {
+    reporter.info("Team verification token retrieved");
+    reporter.setSecret(verificationToken);
+  } else {
+    reporter.warning("Failed to retrieve team verification token");
+  }
   if (!match) {
     reporter.warning(`Service "${inputs.projectName}" not found in discovered services after ${inputs.pollTimeoutSeconds}s`);
     return {
@@ -27900,7 +27927,7 @@ async function runOnboarding(inputs, client, sleepFn = sleep, reporter = core_ex
       discoveredServiceName: "",
       collectionId: "",
       applicationId: "",
-      verificationToken: null,
+      verificationToken,
       status: "not-found"
     };
   }
@@ -27908,19 +27935,20 @@ async function runOnboarding(inputs, client, sleepFn = sleep, reporter = core_ex
   const collectionId = await client.prepareCollection(match.id, inputs.workspaceId);
   reporter.info(`Collection prepared: ${collectionId}`);
   const repoUrl = inputs.repoUrl;
-  const isGitHub = /^https?:\/\/(www\.)?github\.com\//i.test(repoUrl);
-  if (isGitHub) {
+  const gitProvider = detectGitProvider(repoUrl);
+  if (gitProvider) {
     reporter.info(`Onboarding git integration: ${repoUrl}`);
     await client.onboardGit({
       serviceId: match.id,
       workspaceId: inputs.workspaceId,
       environmentId: inputs.environmentId,
       gitRepositoryUrl: repoUrl,
-      gitApiKey: inputs.githubToken || void 0
+      gitServiceName: gitProvider.serviceName,
+      gitApiKey: gitProvider.apiKey(inputs)
     });
     reporter.info(`Git onboarding complete for ${match.name}`);
   } else {
-    reporter.info(`Skipping git onboarding for non-GitHub repo: ${repoUrl}`);
+    reporter.info(`Skipping git onboarding for unsupported provider: ${repoUrl}`);
   }
   const providerServiceId = await client.resolveProviderServiceId(
     inputs.projectName,
@@ -27942,17 +27970,6 @@ async function runOnboarding(inputs, client, sleepFn = sleep, reporter = core_ex
     }
   } else {
     reporter.warning("Could not resolve Akita provider service ID; skipping acknowledgment and application binding");
-  }
-  reporter.info(`Acknowledging workspace onboarding for ${inputs.workspaceId}...`);
-  await client.acknowledgeWorkspace(inputs.workspaceId);
-  reporter.info("Workspace onboarding acknowledged");
-  reporter.info("Retrieving team verification token...");
-  const verificationToken = await client.getTeamVerificationToken(inputs.workspaceId);
-  if (verificationToken) {
-    reporter.info("Team verification token retrieved");
-    reporter.setSecret(verificationToken);
-  } else {
-    reporter.warning("Failed to retrieve team verification token");
   }
   return {
     discoveredServiceId: match.id,
@@ -28124,6 +28141,7 @@ function parseCliArgs(argv, env = process.env) {
     "postman-api-key",
     "postman-team-id",
     "github-token",
+    "ado-token",
     "poll-timeout-seconds",
     "poll-interval-seconds",
     "postman-stack"
@@ -28182,6 +28200,9 @@ async function runCli(argv = process.argv.slice(2), runtime = {}) {
   if (inputs.githubToken) {
     reporter.setSecret(inputs.githubToken);
   }
+  if (inputs.adoToken) {
+    reporter.setSecret(inputs.adoToken);
+  }
   const preliminaryClient = new BifrostCatalogClient({
     accessToken: inputs.postmanAccessToken,
     teamId: inputs.postmanTeamId,
@@ -28218,7 +28239,15 @@ async function runCli(argv = process.argv.slice(2), runtime = {}) {
 }
 var currentModulePath = typeof __filename === "string" ? __filename : "";
 var entrypoint = process.argv[1];
-if (entrypoint && currentModulePath === entrypoint) {
+function isEntrypoint(currentPath, entrypointPath) {
+  if (!currentPath || !entrypointPath) return false;
+  try {
+    return (0, import_node_fs.realpathSync)(currentPath) === (0, import_node_fs.realpathSync)(entrypointPath);
+  } catch {
+    return import_node_path.default.resolve(currentPath) === import_node_path.default.resolve(entrypointPath);
+  }
+}
+if (isEntrypoint(currentModulePath, entrypoint)) {
   runCli().catch((error2) => {
     const message = error2 instanceof Error ? error2.message : String(error2);
     process.stderr.write(`${message}
