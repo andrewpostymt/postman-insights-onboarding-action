@@ -23,7 +23,13 @@ export interface DiscoveredService {
   discoveredAt: string;
 }
 
-export interface AkitaDiscoveredService { id: string; name: string; systemEnvironmentId?: string | null; }
+export interface AkitaDiscoveredService {
+  id: string;
+  name: string;
+  systemEnvironmentId?: string | null;
+  system_env?: string | null;
+  system_environment_id?: string | null;
+}
 
 interface DiscoveredServicesResponse {
   total: number;

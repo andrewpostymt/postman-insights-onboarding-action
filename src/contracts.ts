@@ -76,6 +76,16 @@ export const alphaActionContract: AlphaActionContract = {
       default: 'prod',
       allowedValues: ['prod', 'beta'],
     },
+    'credential-preflight': {
+      description: 'Compatibility input for caller-controlled credential validation.',
+      required: false,
+      default: 'warn',
+    },
+    'service-not-found-policy': {
+      description: 'Compatibility input for caller-controlled service-not-found handling.',
+      required: false,
+      default: 'warn',
+    },
   },
   outputs: {
     'discovered-service-id': {

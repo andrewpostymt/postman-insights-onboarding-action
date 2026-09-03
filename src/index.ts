@@ -266,7 +266,7 @@ export async function runOnboarding(
   );
   let applicationId = '';
   if (providerServiceId) {
-    const sysEnvId = inputs.systemEnvironmentId || match?.systemEnvironmentId || akitaMatch?.systemEnvironmentId || '';
+    const sysEnvId = inputs.systemEnvironmentId || match?.systemEnvironmentId || akitaMatch?.systemEnvironmentId || akitaMatch?.system_env || akitaMatch?.system_environment_id || '';
     if (sysEnvId) {
       reporter.info(`Acknowledging Insights onboarding for ${providerServiceId}...`);
       await client.acknowledgeOnboarding(providerServiceId, inputs.workspaceId, sysEnvId);
@@ -277,7 +277,7 @@ export async function runOnboarding(
       applicationId = appResult.application_id;
       reporter.info(`Application binding created: ${appResult.application_id} for service ${appResult.service_id}`);
     } else {
-      reporter.warning('No systemEnvironmentId available; skipping Insights acknowledgment and application binding');
+      throw new Error('No systemEnvironmentId available; cannot complete Insights acknowledgment and application binding');
     }
   } else {
     reporter.warning('Could not resolve Akita provider service ID; skipping acknowledgment and application binding');
