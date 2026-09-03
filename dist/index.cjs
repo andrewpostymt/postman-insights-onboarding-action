@@ -27827,7 +27827,7 @@ function clamp(value, min, max, fallback) {
   return Math.min(max, Math.max(min, parsed));
 }
 function resolveInputs(env = process.env) {
-  const get = (name, fallback = "") => env[`INPUT_${name.toUpperCase().replace(/-/g, "_")}`]?.trim() || fallback;
+  const get = (name, fallback = "") => env[`INPUT_${name.toUpperCase().replace(/-/g, "_")}`]?.trim() || getInput(name).trim() || fallback;
   const projectName = get("project-name");
   if (!projectName) throw new Error("project-name is required");
   const postmanAccessToken = get("postman-access-token");

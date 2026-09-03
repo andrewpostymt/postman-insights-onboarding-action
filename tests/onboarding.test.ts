@@ -149,6 +149,27 @@ describe('runOnboarding', () => {
   });
 });
 
+describe('resolveInputs GitHub Action boundary', () => {
+  it('reads action inputs through the toolkit when using the live environment', () => {
+    const names = ['INPUT_PROJECT_NAME', 'INPUT_POSTMAN_ACCESS_TOKEN', 'INPUT_WORKSPACE_ID', 'INPUT_ENVIRONMENT_ID'];
+    const previous = names.map((name) => process.env[name]);
+    process.env.INPUT_PROJECT_NAME = 'd-acme-fina-acme-mortgage-portal';
+    process.env.INPUT_POSTMAN_ACCESS_TOKEN = 'tok-abc';
+    process.env.INPUT_WORKSPACE_ID = 'ws-123';
+    process.env.INPUT_ENVIRONMENT_ID = 'env-456';
+    try {
+      const inputs = resolveInputs();
+      expect(inputs.projectName).toBe('d-acme-fina-acme-mortgage-portal');
+      expect(inputs.workspaceId).toBe('ws-123');
+    } finally {
+      names.forEach((name, index) => {
+        if (previous[index] === undefined) delete process.env[name];
+        else process.env[name] = previous[index];
+      });
+    }
+  });
+});
+
 describe('resolveApiKeyAndTeamId', () => {
   let originalFetch: typeof globalThis.fetch;
 

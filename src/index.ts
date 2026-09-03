@@ -109,7 +109,7 @@ export function resolveInputs(
   env: Record<string, string | undefined> = process.env
 ): ActionInputs {
   const get = (name: string, fallback = ''): string =>
-    env[`INPUT_${name.toUpperCase().replace(/-/g, '_')}`]?.trim() || fallback;
+    env[`INPUT_${name.toUpperCase().replace(/-/g, '_')}`]?.trim() || core.getInput(name).trim() || fallback;
 
   const projectName = get('project-name');
   if (!projectName) throw new Error('project-name is required');

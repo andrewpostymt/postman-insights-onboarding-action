@@ -43,6 +43,14 @@ inputs:
     description: 'Postman stack profile.'
     required: false
     default: 'prod'
+  credential-preflight:
+    description: 'Compatibility input retained for callers that control credential validation in the workflow.'
+    required: false
+    default: 'warn'
+  service-not-found-policy:
+    description: 'Compatibility input retained for callers that control service-not-found handling in the workflow.'
+    required: false
+    default: 'warn'
 outputs:
   discovered-service-id:
     description: 'Numeric ID from the API Catalog discovered-services list'
