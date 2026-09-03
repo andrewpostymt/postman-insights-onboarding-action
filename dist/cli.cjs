@@ -27927,14 +27927,19 @@ async function runOnboarding(inputs, client, sleepFn = sleep, reporter = core_ex
   const isGitHub = /^https?:\/\/(www\.)?github\.com\//i.test(repoUrl);
   if (match && isGitHub) {
     reporter.info(`Onboarding git integration: ${repoUrl}`);
-    await client.onboardGit({
-      serviceId: match.id,
-      workspaceId: inputs.workspaceId,
-      environmentId: inputs.environmentId,
-      gitRepositoryUrl: repoUrl,
-      gitApiKey: inputs.githubToken || void 0
-    });
-    reporter.info(`Git onboarding complete for ${match.name}`);
+    try {
+      await client.onboardGit({
+        serviceId: match.id,
+        workspaceId: inputs.workspaceId,
+        environmentId: inputs.environmentId,
+        gitRepositoryUrl: repoUrl,
+        gitApiKey: inputs.githubToken || void 0
+      });
+      reporter.info(`Git onboarding complete for ${match.name}`);
+    } catch (error2) {
+      if (!String(error2).includes("409")) throw error2;
+      reporter.warning(`Git onboarding already exists for ${match.name}; continuing with Insights binding`);
+    }
   } else if (!match) {
     reporter.info("Skipping collection and git onboarding; service was discovered through Akita only");
   } else {

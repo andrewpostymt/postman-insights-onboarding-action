@@ -246,14 +246,19 @@ export async function runOnboarding(
   const isGitHub = /^https?:\/\/(www\.)?github\.com\//i.test(repoUrl);
   if (match && isGitHub) {
     reporter.info(`Onboarding git integration: ${repoUrl}`);
-    await client.onboardGit({
-      serviceId: match.id,
-      workspaceId: inputs.workspaceId,
-      environmentId: inputs.environmentId,
-      gitRepositoryUrl: repoUrl,
-      gitApiKey: inputs.githubToken || undefined,
-    });
-    reporter.info(`Git onboarding complete for ${match.name}`);
+    try {
+      await client.onboardGit({
+        serviceId: match.id,
+        workspaceId: inputs.workspaceId,
+        environmentId: inputs.environmentId,
+        gitRepositoryUrl: repoUrl,
+        gitApiKey: inputs.githubToken || undefined,
+      });
+      reporter.info(`Git onboarding complete for ${match.name}`);
+    } catch (error: unknown) {
+      if (!String(error).includes('409')) throw error;
+      reporter.warning(`Git onboarding already exists for ${match.name}; continuing with Insights binding`);
+    }
   } else if (!match) {
     reporter.info('Skipping collection and git onboarding; service was discovered through Akita only');
   } else {
