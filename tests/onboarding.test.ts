@@ -48,6 +48,7 @@ const sampleService: DiscoveredService = {
 function makeClient(overrides: Record<string, unknown> = {}): BifrostCatalogClient {
   return {
     listDiscoveredServices: vi.fn().mockResolvedValue([sampleService]),
+    listAkitaDiscoveredServices: vi.fn().mockResolvedValue([]),
     prepareCollection: vi.fn().mockResolvedValue('col-abc'),
     onboardGit: vi.fn().mockResolvedValue(undefined),
     resolveProviderServiceId: vi.fn().mockResolvedValue('svc_test123'),
@@ -125,6 +126,26 @@ describe('runOnboarding', () => {
     );
     expect(result.status).toBe('success');
     expect(client.acknowledgeOnboarding).toHaveBeenCalledWith('svc_test123', 'ws-123', '8bfa188b');
+  });
+
+  it('falls back to Akita discovery when Catalog has no record', async () => {
+    const client = makeClient({
+      listDiscoveredServices: vi.fn().mockResolvedValue([]),
+      listAkitaDiscoveredServices: vi.fn().mockResolvedValue([{
+        id: 'svc_akita',
+        name: 'se-catalog-demo/af-cards-activation',
+        systemEnvironmentId: 'sys-akita',
+      }]),
+    });
+
+    const result = await runOnboarding(makeInputs(), client, vi.fn());
+
+    expect(result.status).toBe('success');
+    expect(result.discoveredServiceId).toBe(0);
+    expect(result.discoveredServiceName).toBe('se-catalog-demo/af-cards-activation');
+    expect(client.prepareCollection).not.toHaveBeenCalled();
+    expect(client.acknowledgeOnboarding).toHaveBeenCalledWith('svc_akita', 'ws-123', 'sys-akita');
+    expect(client.createApplication).toHaveBeenCalledWith('ws-123', 'sys-akita');
   });
 });
 

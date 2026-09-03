@@ -23,6 +23,8 @@ export interface DiscoveredService {
   discoveredAt: string;
 }
 
+export interface AkitaDiscoveredService { id: string; name: string; systemEnvironmentId?: string | null; }
+
 interface DiscoveredServicesResponse {
   total: number;
   nextCursor: string | null;
@@ -197,6 +199,11 @@ export class BifrostCatalogClient {
       },
       { maxAttempts: 3, delayMs: 2000, backoffMultiplier: 2 }
     );
+  }
+
+  async listAkitaDiscoveredServices(): Promise<AkitaDiscoveredService[]> {
+    const result = await this.akitaProxyRequest<{ services?: AkitaDiscoveredService[] }>('GET', '/v2/api-catalog/services?status=discovered&populate_endpoints=false&populate_discovery_metadata=true&page=1&page_size=100');
+    return result.ok && result.data ? result.data.services || [] : [];
   }
 
   async onboardGit(params: OnboardGitParams): Promise<void> {

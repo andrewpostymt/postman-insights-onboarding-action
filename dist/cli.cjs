@@ -27631,6 +27631,10 @@ var BifrostCatalogClient = class {
       { maxAttempts: 3, delayMs: 2e3, backoffMultiplier: 2 }
     );
   }
+  async listAkitaDiscoveredServices() {
+    const result = await this.akitaProxyRequest("GET", "/v2/api-catalog/services?status=discovered&populate_endpoints=false&populate_discovery_metadata=true&page=1&page_size=100");
+    return result.ok && result.data ? result.data.services || [] : [];
+  }
   async onboardGit(params) {
     await retry(
       async () => {
@@ -27882,9 +27886,18 @@ async function runOnboarding(inputs, client, sleepFn = sleep, reporter = core_ex
   const startTime = Date.now();
   reporter.info(`Looking for discovered service matching "${inputs.clusterName ? `${inputs.clusterName}/` : ""}${inputs.projectName}"...`);
   let match = void 0;
+  let akitaMatch;
   while (Date.now() - startTime < timeoutMs) {
     const discovered = await client.listDiscoveredServices();
     match = findDiscoveredService(discovered, inputs.projectName, inputs.clusterName || void 0);
+    if (!match) {
+      const expectedName = inputs.clusterName ? `${inputs.clusterName}/${inputs.projectName}` : inputs.projectName;
+      akitaMatch = (await client.listAkitaDiscoveredServices()).find((service) => service.name === expectedName);
+      if (akitaMatch) {
+        reporter.info(`Found Akita discovered service: ${akitaMatch.name} (id: ${akitaMatch.id})`);
+        break;
+      }
+    }
     if (match) {
       reporter.info(`Found discovered service: ${match.name} (id: ${match.id})`);
       break;
@@ -27893,7 +27906,7 @@ async function runOnboarding(inputs, client, sleepFn = sleep, reporter = core_ex
     reporter.info(`Service not yet discovered (${elapsedSec}s elapsed, timeout ${inputs.pollTimeoutSeconds}s). Waiting ${inputs.pollIntervalSeconds}s...`);
     await sleepFn(intervalMs);
   }
-  if (!match) {
+  if (!match && !akitaMatch) {
     reporter.warning(`Service "${inputs.projectName}" not found in discovered services after ${inputs.pollTimeoutSeconds}s`);
     return {
       discoveredServiceId: 0,
@@ -27904,12 +27917,15 @@ async function runOnboarding(inputs, client, sleepFn = sleep, reporter = core_ex
       status: "not-found"
     };
   }
-  reporter.info(`Preparing collection for service ${match.id} in workspace ${inputs.workspaceId}...`);
-  const collectionId = await client.prepareCollection(match.id, inputs.workspaceId);
-  reporter.info(`Collection prepared: ${collectionId}`);
+  let collectionId = "";
+  if (match) {
+    reporter.info(`Preparing collection for service ${match.id} in workspace ${inputs.workspaceId}...`);
+    collectionId = await client.prepareCollection(match.id, inputs.workspaceId);
+    reporter.info(`Collection prepared: ${collectionId}`);
+  }
   const repoUrl = inputs.repoUrl;
   const isGitHub = /^https?:\/\/(www\.)?github\.com\//i.test(repoUrl);
-  if (isGitHub) {
+  if (match && isGitHub) {
     reporter.info(`Onboarding git integration: ${repoUrl}`);
     await client.onboardGit({
       serviceId: match.id,
@@ -27919,16 +27935,18 @@ async function runOnboarding(inputs, client, sleepFn = sleep, reporter = core_ex
       gitApiKey: inputs.githubToken || void 0
     });
     reporter.info(`Git onboarding complete for ${match.name}`);
+  } else if (!match) {
+    reporter.info("Skipping collection and git onboarding; service was discovered through Akita only");
   } else {
     reporter.info(`Skipping git onboarding for non-GitHub repo: ${repoUrl}`);
   }
-  const providerServiceId = await client.resolveProviderServiceId(
+  const providerServiceId = akitaMatch?.id || await client.resolveProviderServiceId(
     inputs.projectName,
     inputs.clusterName || void 0
   );
   let applicationId = "";
   if (providerServiceId) {
-    const sysEnvId = inputs.systemEnvironmentId || match.systemEnvironmentId || "";
+    const sysEnvId = inputs.systemEnvironmentId || match?.systemEnvironmentId || akitaMatch?.systemEnvironmentId || "";
     if (sysEnvId) {
       reporter.info(`Acknowledging Insights onboarding for ${providerServiceId}...`);
       await client.acknowledgeOnboarding(providerServiceId, inputs.workspaceId, sysEnvId);
@@ -27955,8 +27973,8 @@ async function runOnboarding(inputs, client, sleepFn = sleep, reporter = core_ex
     reporter.warning("Failed to retrieve team verification token");
   }
   return {
-    discoveredServiceId: match.id,
-    discoveredServiceName: match.name,
+    discoveredServiceId: match?.id || 0,
+    discoveredServiceName: match?.name || akitaMatch?.name || "",
     collectionId,
     applicationId,
     verificationToken,
