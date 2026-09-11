@@ -208,7 +208,7 @@ export class BifrostCatalogClient {
   }
 
   async listAkitaDiscoveredServices(): Promise<AkitaDiscoveredService[]> {
-    const result = await this.akitaProxyRequest<{ services?: AkitaDiscoveredService[] }>('GET', '/v2/api-catalog/services?status=discovered&populate_endpoints=false&populate_discovery_metadata=true&page=1&page_size=100');
+    const result = await this.akitaProxyRequest<{ services?: AkitaDiscoveredService[] }>('GET', '/v2/api-catalog/services?populate_endpoints=false&populate_discovery_metadata=true&page=1&page_size=100');
     return result.ok && result.data ? result.data.services || [] : [];
   }
 
@@ -247,7 +247,7 @@ export class BifrostCatalogClient {
     for (let pageCount = 0; pageCount < MAX_PROVIDER_SERVICE_PAGES; pageCount += 1) {
       const result = await this.akitaProxyRequest<{ services?: Array<{ id: string; name: string }>; total?: number }>(
         'GET',
-        `/v2/api-catalog/services?status=discovered&populate_endpoints=false&populate_discovery_metadata=true&page=${page}&page_size=${pageSize}`
+        `/v2/api-catalog/services?populate_endpoints=false&populate_discovery_metadata=true&page=${page}&page_size=${pageSize}`
       );
       if (!result.ok || !result.data) return null;
       const services = result.data.services || [];
