@@ -27634,7 +27634,7 @@ var BifrostCatalogClient = class {
     );
   }
   async listAkitaDiscoveredServices() {
-    const result = await this.akitaProxyRequest("GET", "/v2/api-catalog/services?status=discovered&populate_endpoints=false&populate_discovery_metadata=true&page=1&page_size=100");
+    const result = await this.akitaProxyRequest("GET", "/v2/api-catalog/services?populate_endpoints=false&populate_discovery_metadata=true&page=1&page_size=100");
     return result.ok && result.data ? result.data.services || [] : [];
   }
   async onboardGit(params) {
@@ -27667,7 +27667,7 @@ var BifrostCatalogClient = class {
     for (let pageCount = 0; pageCount < MAX_PROVIDER_SERVICE_PAGES; pageCount += 1) {
       const result = await this.akitaProxyRequest(
         "GET",
-        `/v2/api-catalog/services?status=discovered&populate_endpoints=false&populate_discovery_metadata=true&page=${page}&page_size=${pageSize}`
+        `/v2/api-catalog/services?populate_endpoints=false&populate_discovery_metadata=true&page=${page}&page_size=${pageSize}`
       );
       if (!result.ok || !result.data) return null;
       const services = result.data.services || [];

@@ -63,6 +63,21 @@ describe('BifrostCatalogClient', () => {
     expect(services[0].name).toBe('se-catalog-demo/af-cards-activation');
   });
 
+  it('queries Akita across service states for discovery and provider resolution', async () => {
+    const fetchFn = mockFetch([
+      { ok: true, status: 200, body: { services: [{ id: 'svc-1', name: 'cluster-a/service-a' }] } },
+      { ok: true, status: 200, body: { total: 1, services: [{ id: 'svc-1', name: 'cluster-a/service-a' }] } },
+    ]);
+    const client = new BifrostCatalogClient({ accessToken: 'tok-abc', teamId: '14103640', apiKey: 'PMAK-test', fetchFn });
+
+    await expect(client.listAkitaDiscoveredServices()).resolves.toEqual([{ id: 'svc-1', name: 'cluster-a/service-a' }]);
+    await expect(client.resolveProviderServiceId('service-a', 'cluster-a')).resolves.toBe('svc-1');
+
+    for (const [, options] of (fetchFn as ReturnType<typeof vi.fn>).mock.calls) {
+      expect(JSON.parse(options.body).path).not.toContain('status=discovered');
+    }
+  });
+
   it('prepares a collection', async () => {
     const fetchFn = mockFetch([{
       ok: true,
